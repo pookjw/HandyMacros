@@ -1,12 +1,20 @@
-import HandyMacros
 import Foundation
-import Observation
+import HandyMacros
 
-final class MyObject {
+@objc
+final class MyObject: NSObject {
     @addCancellationToWillSet
     var number: Task<Void, Never>?
     
-    func foo() /*async*/ {
+//    @addObjCCompletionHandler(selector: .init("foo"))
+//    @objc
+//    @_silgen_name("foo")
+    func foo(c: @escaping (Int?, Error?) -> Void) async {
         
+    }
+    
+    @addObjCCompletionHandler
+    func foo_2() async-> Int???? {
+        nil
     }
 }

@@ -11,7 +11,7 @@ import SwiftSyntaxMacros
 @main
 struct HandyMacrosExternal: CompilerPlugin {
     let providingMacros: [Macro.Type] = [
-//        AddClangCompletionHandler.self
+        AddObjCCompletionHandlerMacro.self,
         AddCancellationToWillSetMacro.self
     ]
 }

@@ -1,8 +1,5 @@
 import SwiftSyntax
 import SwiftSyntaxMacros
-import SwiftDiagnostics
-import SwiftOperators
-import SwiftSyntaxBuilder
 
 extension VariableDeclSyntax {
     func accessorsMatching(_ predicate: (TokenKind) -> Bool) -> [AccessorDeclSyntax] {
