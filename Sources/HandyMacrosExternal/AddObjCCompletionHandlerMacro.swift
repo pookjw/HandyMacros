@@ -34,18 +34,43 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
                 return nil
             }
             
-            return identifierSyntax.name.text
+            let originalReturnType: String = identifierSyntax.name.text
+            
+            return originalReturnType
         }() ?? "Void"
+        
+        let isNumeric: Bool = {
+            let numericTypes: [String] = [
+                "Int",
+                "Int8",
+                "Int16",
+                "Int32",
+                "Int64",
+                "UInt",
+                "UInt8",
+                "UInt16",
+                "UInt32",
+                "UInt64",
+                "Double",
+                "Float"
+            ]
+            
+            return numericTypes.first(where: { wrappedReturnType.hasSuffix($0) }) != nil
+        }()
         
         let completionParameterType: String = if doesThrow {
             if wrappedReturnType == "Void" {
-                "@escaping (Error?) -> Void"
+                "@escaping (Swift.Error?) -> Void"
+            } else if isNumeric {
+                "@escaping (Foundation.NSNumber?, Swift.Error?) -> Void"
             } else {
-                "@escaping (\(wrappedReturnType)?, Error?) -> Void"
+                "@escaping (\(wrappedReturnType)?, Swift.Error?) -> Void"
             }
         } else {
             if wrappedReturnType == "Void" {
                 "@escaping () -> Void"
+            } else if isNumeric {
+                "@escaping (Foundation.NSNumber?) -> Void"
             } else {
                 "@escaping (\(wrappedReturnType)?) -> Void"
             }
@@ -118,39 +143,63 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
         }
         let call: ExprSyntax = "\(funcDecl.name)(\(raw: callArguments.joined(separator: ", ")))"
         
-        let newBody: ExprSyntax = if wrappedReturnType == "Void" {
+        let resultDeclaration: String = switch (wrappedReturnType, isNumeric, doesThrow) {
+        case ("Void", _, false):
             """
             
-                let progress: Foundation.Progress = .init(totalUnitCount: 1)
-                
-                let task: Task<Void, Never> = .init {
-                    let error: Error?
+                    await \(call)
+                    progress.completedUnitCount = 1
+                    \(completionParameterName)()
+            """
+        case ("Void", _, true):
+            """
+            
+                    let error: Swift.Error?
                     
                     do {
                         try await \(call)
-                        error = nil
                     } catch let _error {
                         error = _error
                     }
                     
                     progress.completedUnitCount = 1
-                    \(raw: completionParameterName)(error)
-                }
-                
-                progress.cancellationHandler = {
-                    task.cancel()
-                }
-                
-                return progress
+                    \(completionParameterName)(error)
             """
-        } else {
+        case (_, true, false):
             """
             
-                let progress: Foundation.Progress = .init(totalUnitCount: 1)
-                
-                let task: Task<Void, Never> = .init {
-                    let result: \(raw: wrappedReturnType)?
-                    let error: Error?
+                    let result: Foundation.NSNumber? = await .init(integerLiteral: \(call))
+                    progress.completedUnitCount = 1
+                    \(completionParameterName)(result)
+            """
+        case (_, true, true):
+            """
+            
+                    let result: Foundation.NSNumber?
+                    let error: Swift.Error?
+                    
+                    do {
+                        result = try await .init(integerLiteral: \(call))
+                        error = nil
+                    } catch let _error {
+                        result = nil
+                        error = _error
+                    }
+                    
+                    progress.completedUnitCount = 1
+                    \(completionParameterName)(result, error)
+            """
+        case (_, _, false):
+            """
+            
+                    let result: \(wrappedReturnType)? = await \(call)
+                    progress.completedUnitCount = 1
+                    \(completionParameterName)(result)
+            """
+        default:
+            """
+                    let result: \(wrappedReturnType)?
+                    let error: Swift.Error?
                     
                     do {
                         result = try await \(call)
@@ -161,16 +210,24 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
                     }
                     
                     progress.completedUnitCount = 1
-                    \(raw: completionParameterName)(result, error)
-                }
-                
-                progress.cancellationHandler = {
-                    task.cancel()
-                }
-                
-                return progress
+                    \(completionParameterName)(result, error)
             """
         }
+        
+        let newBody: ExprSyntax = """
+            
+            let progress: Foundation.Progress = .init(totalUnitCount: 1)
+            
+            let task: Task<Void, Never> = .init {
+                \(raw: resultDeclaration)
+            }
+            
+            progress.cancellationHandler = {
+                task.cancel()
+            }
+            
+            return progress
+        """
         
         funcDecl.body = CodeBlockSyntax(
             leftBrace: .leftBraceToken(leadingTrivia: .space),
