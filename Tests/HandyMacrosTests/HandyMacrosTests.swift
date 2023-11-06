@@ -38,7 +38,7 @@ final class HandyMacrosTests: XCTestCase {
             }
             """,
             expandedSource: """
-            func foo(num: Int?) async throws -> Int {
+            func foo(num: Int????) async throws -> Int {
                 .zero
             }
 

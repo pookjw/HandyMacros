@@ -143,7 +143,7 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
         
         //
         
-        let callArguments: [String] = newParametersWithoutCompletion.map { param in
+        let callArguments: [String] = oldParameters.map { param in
             let valName: String = {
                 let argName: String = (param.secondName ?? param.firstName).text
                 
@@ -200,7 +200,7 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
                         coalescedNils += " ?? nil"
                     }
                     
-                    return "(\(coalescedNils)?.\(conversionMethod)"
+                    return "(\(coalescedNils))?.\(conversionMethod)"
                 }
             }()
             
