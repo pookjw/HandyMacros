@@ -38,14 +38,18 @@ final class HandyMacrosTests: XCTestCase {
             }
             """,
             expandedSource: """
+            func foo() async throws -> Int {
+                .zero
+            }
+
             @objc
-            func foo(completionHandler: @escaping ((Int?, Error?) -> Void)) {
-                let progress: Progress = .init(totalUnitCount: 1)
+            func foo(completion: @escaping (Int?, Error?) -> Void) -> Foundation.Progress {
+                let progress: Foundation.Progress = .init(totalUnitCount: 1)
                 
                 let task: Task<Void, Never> = .init {
-                    let result: Int?
+                    let result: Int
                     let error: Error?
-            
+                    
                     do {
                         result = try await foo()
                         error = nil
@@ -55,7 +59,7 @@ final class HandyMacrosTests: XCTestCase {
                     }
                     
                     progress.completedUnitCount = 1
-                    completionHandler(result, error)
+                    completion(result, error)
                 }
                 
                 progress.cancellationHandler = {

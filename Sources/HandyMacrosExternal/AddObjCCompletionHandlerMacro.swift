@@ -20,7 +20,7 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
         }
         
         let completionParameterName: String = node.stringArgument(for: "parameterName") ?? "completion"
-        let selectorName: String = node.stringArgument(for: "selectorName") ?? funcDecl.name.text
+        let selectorName: String? = node.stringArgument(for: "selectorName")
         let doesThrow: Bool = funcDecl.signature.effectSpecifiers?.throwsSpecifier != nil
         let wrappedReturnType: String = {
             var targetSyntax: TypeSyntax? = funcDecl.signature.returnClause?.type
@@ -38,9 +38,17 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
         }() ?? "Void"
         
         let completionParameterType: String = if doesThrow {
-            "@escaping (\(wrappedReturnType)?, Error?) -> Void"
+            if wrappedReturnType == "Void" {
+                "@escaping (Error?) -> Void"
+            } else {
+                "@escaping (\(wrappedReturnType)?, Error?) -> Void"
+            }
         } else {
-            "@escaping (\(wrappedReturnType)?) -> Void"
+            if wrappedReturnType == "Void" {
+                "@escaping () -> Void"
+            } else {
+                "@escaping (\(wrappedReturnType)?) -> Void"
+            }
         }
         
         //
@@ -67,9 +75,114 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
         }
         
         funcDecl.signature.parameterClause.parameters = newParameters
+        
+        //
+        
         funcDecl.signature.effectSpecifiers?.asyncSpecifier = nil
-//        funcDecl.signature.returnClause = nil // TODO: Progress
-        // TODO: Remove attribute
+        funcDecl.signature.effectSpecifiers?.throwsSpecifier = nil
+        
+        //
+        
+        let returnTypeSyntax: TypeSyntax = .init(IdentifierTypeSyntax(name: .identifier("Foundation.Progress")))
+        if var existingReturnSyntax: ReturnClauseSyntax = funcDecl.signature.returnClause?.as(ReturnClauseSyntax.self) {
+            existingReturnSyntax.type = returnTypeSyntax
+            funcDecl.signature.returnClause = existingReturnSyntax
+        } else {
+            funcDecl.signature.returnClause = .init(type: returnTypeSyntax)
+        }
+        
+        //
+        
+       funcDecl.attributes.removeCurrentMacroAttribute(node: node)
+        
+        let objcAttributeString: String
+        if let selectorName: String {
+            objcAttributeString = "@objc(\(selectorName))"
+        } else {
+            objcAttributeString = "@objc"
+        }
+        let syntax: AttributeListSyntax = .init(stringLiteral: objcAttributeString)
+        funcDecl.attributes.append(contentsOf: syntax)
+        
+        //
+        
+        let callArguments: [String] = oldParameters.map { param in
+            let argName = param.secondName ?? param.firstName
+            
+            let paramName = param.firstName
+            if paramName.text != "_" {
+                return "\(paramName.text): \(argName.text)"
+            }
+            
+            return "\(argName.text)"
+        }
+        let call: ExprSyntax = "\(funcDecl.name)(\(raw: callArguments.joined(separator: ", ")))"
+        
+        let newBody: ExprSyntax = if wrappedReturnType == "Void" {
+            """
+            
+                let progress: Foundation.Progress = .init(totalUnitCount: 1)
+                
+                let task: Task<Void, Never> = .init {
+                    let error: Error?
+                    
+                    do {
+                        try await \(call)
+                        error = nil
+                    } catch let _error {
+                        error = _error
+                    }
+                    
+                    progress.completedUnitCount = 1
+                    \(raw: completionParameterName)(error)
+                }
+                
+                progress.cancellationHandler = {
+                    task.cancel()
+                }
+                
+                return progress
+            """
+        } else {
+            """
+            
+                let progress: Foundation.Progress = .init(totalUnitCount: 1)
+                
+                let task: Task<Void, Never> = .init {
+                    let result: \(raw: wrappedReturnType)?
+                    let error: Error?
+                    
+                    do {
+                        result = try await \(call)
+                        error = nil
+                    } catch let _error {
+                        result = nil
+                        error = _error
+                    }
+                    
+                    progress.completedUnitCount = 1
+                    \(raw: completionParameterName)(result, error)
+                }
+                
+                progress.cancellationHandler = {
+                    task.cancel()
+                }
+                
+                return progress
+            """
+        }
+        
+        funcDecl.body = CodeBlockSyntax(
+            leftBrace: .leftBraceToken(leadingTrivia: .space),
+            statements: CodeBlockItemListSyntax(
+                [
+                    CodeBlockItemSyntax(item: .expr(newBody))
+                ]
+            ),
+            rightBrace: .rightBraceToken(leadingTrivia: .newline)
+        )
+        
+        //
         
         return [.init(funcDecl)]
     }
@@ -122,144 +235,4 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
         
         return diagnostic
     }
-    
-//    private static func requiresAttributesDiagnostic(funcDecl: FunctionDeclSyntax) -> Diagnostic? {
-//        guard
-//            funcDecl
-//                .attributes
-//                .first(
-//                    where: { attribute in
-//                        guard let name: String = attribute.as(AttributeSyntax.self)?.attributeName.as(IdentifierTypeSyntax.self)?.name.text else {
-//                            return false
-//                        }
-//                        
-//                        
-//                        return name == "_silgen_name" || name == "_cdecl" || name == "objc"
-//                    }
-//                ) == nil
-//        else {
-//            return nil
-//        }
-//        
-//        let sligenNameAttributes: AttributeListSyntax = {
-//            var syntax: AttributeListSyntax = .init(stringLiteral: "@_silgen_name(\"<#\(funcDecl.name.text)#>\")")
-//            syntax.trailingTrivia = .spaces(1)
-//            
-//            var result: AttributeListSyntax = funcDecl.attributes
-//            if
-//                var lastAttribute: AttributeListSyntax.Element = result.last,
-//                let lastIndex: SyntaxChildrenIndex = result.lastIndex(of: lastAttribute)
-//            {
-//                result.remove(at: lastIndex)
-//                
-//                lastAttribute.leadingTrivia = .spaces(.zero)
-//                result.append(contentsOf: syntax)
-//                result.append(lastAttribute)
-//            } else {
-//                result.append(contentsOf: syntax)
-//            }
-//            
-//            return result
-//        }()
-//        
-//        let cDeclAttributes: AttributeListSyntax = {
-//            var syntax: AttributeListSyntax = .init(stringLiteral: "@_cdecl(\"<#\(funcDecl.name.text)#>\")")
-//            syntax.trailingTrivia = .spaces(1)
-//            
-//            var result: AttributeListSyntax = funcDecl.attributes
-//            if
-//                var lastAttribute: AttributeListSyntax.Element = result.last,
-//                let lastIndex: SyntaxChildrenIndex = result.lastIndex(of: lastAttribute)
-//            {
-//                result.remove(at: lastIndex)
-//                
-//                lastAttribute.leadingTrivia = .spaces(.zero)
-//                result.append(contentsOf: syntax)
-//                result.append(lastAttribute)
-//            } else {
-//                result.append(contentsOf: syntax)
-//            }
-//            
-//            return result
-//        }()
-//        
-//        let objcAttributes: AttributeListSyntax = {
-//            var syntax: AttributeListSyntax = .init(stringLiteral: "@objc")
-//            syntax.trailingTrivia = .spaces(1)
-//            
-//            var result: AttributeListSyntax = funcDecl.attributes
-//            if
-//                var lastAttribute: AttributeListSyntax.Element = result.last,
-//                let lastIndex: SyntaxChildrenIndex = result.lastIndex(of: lastAttribute)
-//            {
-//                result.remove(at: lastIndex)
-//                
-//                lastAttribute.leadingTrivia = .spaces(.zero)
-//                result.append(contentsOf: syntax)
-//                result.append(lastAttribute)
-//            } else {
-//                result.append(contentsOf: syntax)
-//            }
-//            
-//            return result
-//        }()
-//        
-//        let messageID = MessageID(domain: "HandyMacro", id: "addClangCompatibleAttribute")
-//        
-//        let diagnostic: Diagnostic = .init(
-//            // Where the error should go
-//            node: Syntax(funcDecl.funcKeyword),
-//            position: nil,
-//            message: SimpleDiagnosticMessage(
-//                message: "can only add to a C-compatible function",
-//                diagnosticID: messageID,
-//                severity: .error
-//            ),
-//            highlights: nil,
-//            notes: [],
-//            fixIts: [
-//                .init(
-//                    message: SimpleDiagnosticMessage(
-//                        message: "add `@_sligen_name`",
-//                        diagnosticID: messageID,
-//                        severity: .error
-//                    ),
-//                    changes: [
-//                        .replace(
-//                            oldNode: .init(funcDecl.attributes),
-//                            newNode: .init(sligenNameAttributes)
-//                        )
-//                    ]
-//                ),
-//                .init(
-//                    message: SimpleDiagnosticMessage(
-//                        message: "add `@_cdecl`",
-//                        diagnosticID: messageID,
-//                        severity: .error
-//                    ),
-//                    changes: [
-//                        .replace(
-//                            oldNode: .init(funcDecl.attributes),
-//                            newNode: .init(cDeclAttributes)
-//                        )
-//                    ]
-//                ),
-//                .init(
-//                    message: SimpleDiagnosticMessage(
-//                        message: "add `@objc`",
-//                        diagnosticID: messageID,
-//                        severity: .error
-//                    ),
-//                    changes: [
-//                        .replace(
-//                            oldNode: .init(funcDecl.attributes),
-//                            newNode: .init(objcAttributes)
-//                        )
-//                    ]
-//                )
-//            ]
-//        )
-//        
-//        return diagnostic
-//    }
 }
