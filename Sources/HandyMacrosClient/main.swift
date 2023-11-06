@@ -7,7 +7,7 @@ final class MyObject: NSObject {
     var number: Task<Void, Never>?
     
     @addObjCCompletionHandler(parameterName: "c")
-    func foo_2(num: Int????) async throws -> Int {
+    func foo_2(num: Int????, num_2: Int?) async throws -> Int {
         .zero
     }
 }

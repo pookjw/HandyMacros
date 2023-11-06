@@ -65,12 +65,6 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
         let oldParameters: FunctionParameterListSyntax = funcDecl.signature.parameterClause.parameters
         var newParameters: FunctionParameterListSyntax = oldParameters
         
-        let completionParameter: FunctionParameterSyntax = .init(
-            firstName: .identifier(completionParameterName),
-            colon: .colonToken(trailingTrivia: .space),
-            type: TypeSyntax(stringLiteral: completionParameterType)
-        )
-        
         for newParameter in newParameters {
             guard newParameter.type.is(OptionalTypeSyntax.self) else {
                 continue
@@ -83,21 +77,21 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
                 targetSyntax = optioalTypeSyntax.wrappedType
             }
             
-            var newParameter: FunctionParameterListSyntax.Element = newParameter
-            
             guard
                 targetSyntax.isNumeric,
-                let index: SyntaxChildrenIndex = newParameters.index(of: newParameter)
+                let index: SyntaxChildrenIndex = oldParameters.index(of: newParameter)
             else {
                 continue
             }
             
-            newParameter.type = .init(stringLiteral: "Foundation.NSNumber?")
-            newParameters.remove(at: index)
-            newParameters.insert(newParameter, at: index)
+            newParameters[index].type = .init(stringLiteral: "Foundation.NSNumber?")
         }
         
-        var newParametersWithoutCompletion: FunctionParameterListSyntax = oldParameters
+        let completionParameter: FunctionParameterSyntax = .init(
+            firstName: .identifier(completionParameterName),
+            colon: .colonToken(trailingTrivia: .space),
+            type: TypeSyntax(stringLiteral: completionParameterType)
+        )
         
         if
             var lastParameter: FunctionParameterListSyntax.Element = newParameters.last,
