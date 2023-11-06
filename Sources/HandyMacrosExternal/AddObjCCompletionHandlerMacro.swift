@@ -203,11 +203,9 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
         
         var prefixCoalescingNils: String = .init()
         var suffixCoalescingNils: String = .init()
-        if optionalCount > 1 {
-            for _ in 0..<(optionalCount - 1) {
-                prefixCoalescingNils = "(" + prefixCoalescingNils
-                suffixCoalescingNils += ") ?? nil"
-            }
+        for _ in 0..<optionalCount {
+            prefixCoalescingNils = "(" + prefixCoalescingNils
+            suffixCoalescingNils += ") ?? nil"
         }
         
         let resultDeclaration: String = switch (unwrappedReturnType, isNumeric, doesThrow) {
@@ -260,14 +258,14 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
         case (_, _, false):
             """
             
-                    let result: \(originalReturnType) = await \(call)
+                    let result: \(originalReturnType)? = await \(call)
                     progress.completedUnitCount = 1
                     \(completionParameterName)(\(prefixCoalescingNils)result\(suffixCoalescingNils))
             """
         default:
             """
             
-                    let result: \(originalReturnType)
+                    let result: \(originalReturnType)?
                     let error: Swift.Error?
                     
                     do {
