@@ -97,7 +97,7 @@ actor MyObject: NSObject {
         
         let task: Task<Void, Never> = .init {
             
-            let result: String???
+            let result: String????
             let error: Swift.Error?
             
             do {
@@ -109,7 +109,7 @@ actor MyObject: NSObject {
             }
             
             progress.completedUnitCount = 1
-            completion(((result) ?? nil) ?? nil, error)
+            completion((((result) ?? nil) ?? nil) ?? nil, error)
         }
         
         progress.cancellationHandler = {
