@@ -28,6 +28,8 @@ class Object {
 
 [`apple/swift-syntax의 AddCompletionHandlerMacro.swift`](https://github.com/apple/swift-syntax/blob/main/Examples/Sources/MacroExamples/Implementation/Peer/AddCompletionHandlerMacro.swift)와 다른 점은
 
+**Features**
+
 - `NSProgress`를 통한 cancel을 지원해요.
 
 - Error Handling을 지원해요.
@@ -36,7 +38,19 @@ class Object {
 
 - `Int?`를 `NSNumber?`로 변환해줘요.
 
-TODO : `@_silgen_name` 지원 (`@_cdecl`은 지원 불가 - Swift ABI를 지원하지 않음)
+**TODO**
+
+- `@_silgen_name` 지원 (`@_cdecl`은 지원 불가 - Swift ABI를 지원하지 않음)
+
+- `actor` 안의 method일 경우 `async` 기호를 명시적으로 적지 않으면 에러
+
+```swift
+@objc
+actor MyObject: NSObject {
+    @addObjCCompletionHandler
+    func foo() {} // ERROR: Can only add a completion-handler variant to an 'async' function
+}
+```
 
 ### 예시
 
