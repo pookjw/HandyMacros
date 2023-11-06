@@ -87,11 +87,11 @@ actor MyObject: NSObject {
 
 ```swift
 @objc class Object: NSObject {
-    @addObjCCompletionHandler
+    @addObjCCompletionHandler(parameterName: "completionHandler", selectorName: "f:n1:n2:c:")
     func foo(number_1: Int??, number_2: Int?????) async throws -> String??? { "hello" }
     
     /* Expanded -- START */
-    @objc
+    @objc(f:n1:n2:c:)
     func foo(number_1: Foundation.NSNumber?, number_2: Foundation.NSNumber?, completion: @escaping (@Sendable (String?, Swift.Error?) -> Void)) -> Foundation.Progress {
         let progress: Foundation.Progress = .init(totalUnitCount: 1)
         
