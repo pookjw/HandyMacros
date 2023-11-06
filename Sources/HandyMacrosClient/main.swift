@@ -6,8 +6,8 @@ final class MyObject: NSObject {
     @addCancellationToWillSet
     var number: Task<Void, Never>?
     
-    @addObjCCompletionHandler(parameterName: "c", selectorName: "foo_3:")
-    func foo_2() async throws -> Int {
+    @addObjCCompletionHandler(parameterName: "c")
+    func foo_2(num: Int?) async throws -> Int {
         .zero
     }
 }

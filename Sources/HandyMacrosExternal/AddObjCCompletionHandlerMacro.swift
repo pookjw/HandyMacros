@@ -3,6 +3,7 @@ import SwiftSyntax
 import SwiftSyntaxBuilder
 import SwiftSyntaxMacros
 import SwiftDiagnostics
+import Foundation
 
 public struct AddObjCCompletionHandlerMacro: PeerMacro {
     public static func expansion(
@@ -22,7 +23,7 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
         let completionParameterName: String = node.stringArgument(for: "parameterName") ?? "completion"
         let selectorName: String? = node.stringArgument(for: "selectorName")
         let doesThrow: Bool = funcDecl.signature.effectSpecifiers?.throwsSpecifier != nil
-        let wrappedReturnType: String = {
+        let (wrappedReturnType, isNumeric): (String, Bool) = {
             var targetSyntax: TypeSyntax? = funcDecl.signature.returnClause?.type
             
             // unwrap multiple optionals...
@@ -30,33 +31,16 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
                 targetSyntax = optioalTypeSyntax.wrappedType
             }
             
-            guard let identifierSyntax: IdentifierTypeSyntax = targetSyntax?.as(IdentifierTypeSyntax.self) else {
+            guard
+                let targetSyntax: TypeSyntax,
+                let identifierSyntax: IdentifierTypeSyntax = targetSyntax.as(IdentifierTypeSyntax.self) else {
                 return nil
             }
             
             let originalReturnType: String = identifierSyntax.name.text
             
-            return originalReturnType
-        }() ?? "Void"
-        
-        let isNumeric: Bool = {
-            let numericTypes: [String] = [
-                "Int",
-                "Int8",
-                "Int16",
-                "Int32",
-                "Int64",
-                "UInt",
-                "UInt8",
-                "UInt16",
-                "UInt32",
-                "UInt64",
-                "Double",
-                "Float"
-            ]
-            
-            return numericTypes.first(where: { wrappedReturnType.hasSuffix($0) }) != nil
-        }()
+            return (originalReturnType, targetSyntax.isNumeric)
+        }() ?? ("Void", false)
         
         let completionParameterType: String = if doesThrow {
             if wrappedReturnType == "Void" {
@@ -86,6 +70,34 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
             colon: .colonToken(trailingTrivia: .space),
             type: TypeSyntax(stringLiteral: completionParameterType)
         )
+        
+        for newParameter in newParameters {
+            guard newParameter.type.is(OptionalTypeSyntax.self) else {
+                continue
+            }
+            
+            var targetSyntax: TypeSyntax = newParameter.type
+            
+            // unwrap multiple optionals...
+            while let optioalTypeSyntax: OptionalTypeSyntax = targetSyntax.as(OptionalTypeSyntax.self) {
+                targetSyntax = optioalTypeSyntax.wrappedType
+            }
+            
+            var newParameter: FunctionParameterListSyntax.Element = newParameter
+            
+            guard
+                targetSyntax.isNumeric,
+                let index: SyntaxChildrenIndex = newParameters.index(of: newParameter)
+            else {
+                continue
+            }
+            
+            newParameter.type = .init(stringLiteral: "Foundation.NSNumber?")
+            newParameters.remove(at: index)
+            newParameters.insert(newParameter, at: index)
+        }
+        
+        var newParametersWithoutCompletion: FunctionParameterListSyntax = oldParameters
         
         if
             var lastParameter: FunctionParameterListSyntax.Element = newParameters.last,
@@ -131,15 +143,74 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
         
         //
         
-        let callArguments: [String] = oldParameters.map { param in
-            let argName = param.secondName ?? param.firstName
+        let callArguments: [String] = newParametersWithoutCompletion.map { param in
+            let valName: String = {
+                let argName: String = (param.secondName ?? param.firstName).text
+                
+                var optionalCount: Int = .zero
+                var typeSyntax: TypeSyntax = param.type
+                while let optionalSyntax: OptionalTypeSyntax = typeSyntax.as(OptionalTypeSyntax.self) {
+                    typeSyntax = optionalSyntax.wrappedType
+                    optionalCount += 1
+                }
+                
+                guard typeSyntax.isNumeric else {
+                    return argName
+                }
+                
+                guard let identifierTypeSyntax: IdentifierTypeSyntax = typeSyntax.as(IdentifierTypeSyntax.self) else {
+                    return argName
+                }
+                
+                let typeName: String = identifierTypeSyntax.name.text
+                
+                let conversionMethod: String = {
+                    if typeName.hasSuffix("UInt") {
+                        "uintValue"
+                    } else if typeName.hasSuffix("UInt8") {
+                        "uint8Value"
+                    } else if typeName.hasSuffix("UInt16") {
+                        "uint16Value"
+                    } else if typeName.hasSuffix("UInt32") {
+                        "uint32Value"
+                    } else if typeName.hasSuffix("UInt64") {
+                        "uint64Value"
+                    } else if typeName.hasSuffix("Int") {
+                        "intValue"
+                    } else if typeName.hasSuffix("Int8") {
+                        "int8Value"
+                    } else if typeName.hasSuffix("Int16") {
+                        "int16Value"
+                    } else if typeName.hasSuffix("Int32") {
+                        "int32Value"
+                    } else if typeName.hasSuffix("Int64") {
+                        "int64Value"
+                    } else {
+                        "intValue"
+                    }
+                }()
+                
+                if optionalCount == .zero {
+                    return "\(argName).\(conversionMethod)"
+                } else if optionalCount == 1 {
+                    return "\(argName)?.\(conversionMethod)"
+                } else {
+                    var coalescedNils: String = argName
+                    for _ in 0..<(optionalCount - 1) {
+                        coalescedNils += " ?? nil"
+                    }
+                    
+                    return "(\(coalescedNils)?.\(conversionMethod)"
+                }
+            }()
             
-            let paramName = param.firstName
-            if paramName.text != "_" {
-                return "\(paramName.text): \(argName.text)"
+            
+            let paramName: String = param.firstName.text
+            if paramName != "_" {
+                return "\(paramName): \(valName)"
             }
             
-            return "\(argName.text)"
+            return "\(valName)"
         }
         let call: ExprSyntax = "\(funcDecl.name)(\(raw: callArguments.joined(separator: ", ")))"
         
@@ -198,6 +269,7 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
             """
         default:
             """
+            
                     let result: \(wrappedReturnType)?
                     let error: Swift.Error?
                     
@@ -215,7 +287,7 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
         }
         
         let newBody: ExprSyntax = """
-            
+        
             let progress: Foundation.Progress = .init(totalUnitCount: 1)
             
             let task: Task<Void, Never> = .init {

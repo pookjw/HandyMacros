@@ -33,25 +33,26 @@ final class HandyMacrosTests: XCTestCase {
         assertMacroExpansion(
             """
             @addObjCCompletionHandler
-            func foo() async throws -> Int {
+            func foo(num: Int?) async throws -> Int {
                 .zero
             }
             """,
             expandedSource: """
-            func foo() async throws -> Int {
+            func foo(num: Int?) async throws -> Int {
                 .zero
             }
 
             @objc
-            func foo(completion: @escaping (Int?, Error?) -> Void) -> Foundation.Progress {
+            func foo(num: Foundation.NSNumber?, completion: @escaping (Foundation.NSNumber?, Swift.Error?) -> Void) -> Foundation.Progress {
                 let progress: Foundation.Progress = .init(totalUnitCount: 1)
                 
                 let task: Task<Void, Never> = .init {
-                    let result: Int
-                    let error: Error?
+                    
+                    let result: Foundation.NSNumber?
+                    let error: Swift.Error?
                     
                     do {
-                        result = try await foo()
+                        result = try await .init(integerLiteral: foo(num: num?.intValue))
                         error = nil
                     } catch let _error {
                         result = nil
