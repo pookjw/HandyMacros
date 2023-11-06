@@ -23,4 +23,15 @@ extension TypeSyntax {
         
         return numericTypes.first(where: { identifierTypeSyntax.name.text.hasSuffix($0) }) != nil
     }
+    
+    var wrappedValue: (TypeSyntax, Int) {
+        var optionalCount: Int = .zero
+        var typeSyntax: TypeSyntax = self
+        while let optionalSyntax: OptionalTypeSyntax = typeSyntax.as(OptionalTypeSyntax.self) {
+            typeSyntax = optionalSyntax.wrappedType
+            optionalCount += 1
+        }
+        
+        return (typeSyntax, optionalCount)
+    }
 }

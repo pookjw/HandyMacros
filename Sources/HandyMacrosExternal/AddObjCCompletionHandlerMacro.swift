@@ -23,40 +23,45 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
         let completionParameterName: String = node.stringArgument(for: "parameterName") ?? "completion"
         let selectorName: String? = node.stringArgument(for: "selectorName")
         let doesThrow: Bool = funcDecl.signature.effectSpecifiers?.throwsSpecifier != nil
-        let (wrappedReturnType, isNumeric): (String, Bool) = {
-            var targetSyntax: TypeSyntax? = funcDecl.signature.returnClause?.type
-            
-            // unwrap multiple optionals...
-            while let optioalTypeSyntax: OptionalTypeSyntax = targetSyntax?.as(OptionalTypeSyntax.self) {
-                targetSyntax = optioalTypeSyntax.wrappedType
+        let (unwrappedReturnType, optionalCount, isNumeric): (String, Int, Bool) = {
+            guard let returnTypeSyntax: TypeSyntax = funcDecl.signature.returnClause?.type else {
+                return nil
             }
             
+            let (typeSyntax, optionalCount): (TypeSyntax, Int) = returnTypeSyntax.wrappedValue
+            
             guard
-                let targetSyntax: TypeSyntax,
-                let identifierSyntax: IdentifierTypeSyntax = targetSyntax.as(IdentifierTypeSyntax.self) else {
+                let identifierSyntax: IdentifierTypeSyntax = typeSyntax.as(IdentifierTypeSyntax.self) else {
                 return nil
             }
             
             let originalReturnType: String = identifierSyntax.name.text
             
-            return (originalReturnType, targetSyntax.isNumeric)
-        }() ?? ("Void", false)
+            return (originalReturnType, optionalCount, typeSyntax.isNumeric)
+        }() ?? ("Void", .zero, false)
+        let originalReturnType: String = {
+            var result: String = unwrappedReturnType
+            for _ in 0..<optionalCount {
+                result += "?"
+            }
+            return result
+        }()
         
         let completionParameterType: String = if doesThrow {
-            if wrappedReturnType == "Void" {
-                "@escaping (Swift.Error?) -> Void"
+            if unwrappedReturnType == "Void" {
+                "@escaping (@Sendable (Swift.Error?) -> Void)"
             } else if isNumeric {
-                "@escaping (Foundation.NSNumber?, Swift.Error?) -> Void"
+                "@escaping (@Sendable (Foundation.NSNumber?, Swift.Error?) -> Void)"
             } else {
-                "@escaping (\(wrappedReturnType)?, Swift.Error?) -> Void"
+                "@escaping (@Sendable (\(unwrappedReturnType)?, Swift.Error?) -> Void)"
             }
         } else {
-            if wrappedReturnType == "Void" {
+            if unwrappedReturnType == "Void" {
                 "@escaping () -> Void"
             } else if isNumeric {
                 "@escaping (Foundation.NSNumber?) -> Void"
             } else {
-                "@escaping (\(wrappedReturnType)?) -> Void"
+                "@escaping (\(unwrappedReturnType)?) -> Void"
             }
         }
         
@@ -141,12 +146,7 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
             let valName: String = {
                 let argName: String = (param.secondName ?? param.firstName).text
                 
-                var optionalCount: Int = .zero
-                var typeSyntax: TypeSyntax = param.type
-                while let optionalSyntax: OptionalTypeSyntax = typeSyntax.as(OptionalTypeSyntax.self) {
-                    typeSyntax = optionalSyntax.wrappedType
-                    optionalCount += 1
-                }
+                let (typeSyntax, optionalCount): (TypeSyntax, Int) = param.type.wrappedValue
                 
                 guard typeSyntax.isNumeric else {
                     return argName
@@ -186,15 +186,8 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
                 
                 if optionalCount == .zero {
                     return "\(argName).\(conversionMethod)"
-                } else if optionalCount == 1 {
-                    return "\(argName)?.\(conversionMethod)"
                 } else {
-                    var coalescedNils: String = argName
-                    for _ in 0..<(optionalCount - 1) {
-                        coalescedNils += " ?? nil"
-                    }
-                    
-                    return "(\(coalescedNils))?.\(conversionMethod)"
+                    return "\(argName)?.\(conversionMethod)"
                 }
             }()
             
@@ -208,7 +201,16 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
         }
         let call: ExprSyntax = "\(funcDecl.name)(\(raw: callArguments.joined(separator: ", ")))"
         
-        let resultDeclaration: String = switch (wrappedReturnType, isNumeric, doesThrow) {
+        var prefixCoalescingNils: String = .init()
+        var suffixCoalescingNils: String = .init()
+        if optionalCount > 1 {
+            for _ in 0..<(optionalCount - 1) {
+                prefixCoalescingNils = "(" + prefixCoalescingNils
+                suffixCoalescingNils += ") ?? nil"
+            }
+        }
+        
+        let resultDeclaration: String = switch (unwrappedReturnType, isNumeric, doesThrow) {
         case ("Void", _, false):
             """
             
@@ -223,6 +225,7 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
                     
                     do {
                         try await \(call)
+                        error = nil
                     } catch let _error {
                         error = _error
                     }
@@ -257,14 +260,14 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
         case (_, _, false):
             """
             
-                    let result: \(wrappedReturnType)? = await \(call)
+                    let result: \(originalReturnType) = await \(call)
                     progress.completedUnitCount = 1
-                    \(completionParameterName)(result)
+                    \(completionParameterName)(\(prefixCoalescingNils)result\(suffixCoalescingNils))
             """
         default:
             """
             
-                    let result: \(wrappedReturnType)?
+                    let result: \(originalReturnType)
                     let error: Swift.Error?
                     
                     do {
@@ -276,7 +279,7 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
                     }
                     
                     progress.completedUnitCount = 1
-                    \(completionParameterName)(result, error)
+                    \(completionParameterName)(\(prefixCoalescingNils)result\(suffixCoalescingNils), error)
             """
         }
         

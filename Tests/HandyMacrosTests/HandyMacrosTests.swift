@@ -38,12 +38,12 @@ final class HandyMacrosTests: XCTestCase {
             }
             """,
             expandedSource: """
-            func foo(num: Int????) async throws -> Int {
+            func foo(num: Int?) async throws -> Int {
                 .zero
             }
 
             @objc
-            func foo(num: Foundation.NSNumber?, completion: @escaping (Foundation.NSNumber?, Swift.Error?) -> Void) -> Foundation.Progress {
+            func foo(num: Foundation.NSNumber?, completion: @escaping (@Sendable (Foundation.NSNumber?, Swift.Error?) -> Void)) -> Foundation.Progress {
                 let progress: Foundation.Progress = .init(totalUnitCount: 1)
                 
                 let task: Task<Void, Never> = .init {
