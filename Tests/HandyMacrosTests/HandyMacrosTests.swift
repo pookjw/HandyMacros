@@ -4,8 +4,8 @@ import XCTest
 import HandyMacrosExternal
 
 let testMacros: [String: Macro.Type] = [
-    "addCancellationToWillSet": AddCancellationToWillSetMacro.self,
-    "addObjCCompletionHandler": AddObjCCompletionHandlerMacro.self
+    "AddCancellationToWillSet": AddCancellationToWillSetMacro.self,
+    "AddObjCCompletionHandler": AddObjCCompletionHandlerMacro.self
 ]
 
 final class HandyMacrosTests: XCTestCase {
@@ -13,7 +13,7 @@ final class HandyMacrosTests: XCTestCase {
         assertMacroExpansion(
             """
             actor MyActor {
-                @addCancellationToWillSet var task: Task<Void, Never>?
+                @AddCancellationToWillSet var task: Task<Void, Never>?
             }
             """,
             expandedSource: """
@@ -32,7 +32,7 @@ final class HandyMacrosTests: XCTestCase {
     func test_addClangCompletionHandler() async throws {
         assertMacroExpansion(
             """
-            @addObjCCompletionHandler
+            @AddObjCCompletionHandler
             func foo(num: Int?) async throws -> Int {
                 .zero
             }

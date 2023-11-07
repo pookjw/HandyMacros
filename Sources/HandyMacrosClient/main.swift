@@ -3,9 +3,9 @@ import HandyMacros
 
 @objc
 final class MyObject: NSObject {
-    @addCancellationToWillSet
+    @AddCancellationToWillSet
     var number: Task<Void, Never>?
     
-    @addObjCCompletionHandler
+    @AddObjCCompletionHandler
     func foo(number_1: Int??, number_2: Int?????, bool_1: Bool??) async throws -> String??? { "hello" }
 }
