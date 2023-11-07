@@ -18,7 +18,8 @@ extension TypeSyntax {
             "UInt32",
             "UInt64",
             "Double",
-            "Float"
+            "Float",
+            "Bool"
         ]
         
         return numericTypes.first(where: { identifierTypeSyntax.name.text.hasSuffix($0) }) != nil

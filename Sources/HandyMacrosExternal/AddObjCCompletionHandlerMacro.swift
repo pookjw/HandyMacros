@@ -148,7 +148,7 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
                 
                 let (typeSyntax, optionalCount): (TypeSyntax, Int) = param.type.wrappedValue
                 
-                guard typeSyntax.isNumeric else {
+                guard typeSyntax.isNumeric, optionalCount > .zero else {
                     return argName
                 }
                 
@@ -179,6 +179,8 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
                         "int32Value"
                     } else if typeName.hasSuffix("Int64") {
                         "int64Value"
+                    } else if typeName.hasSuffix("Bool") {
+                        "boolValue"
                     } else {
                         "intValue"
                     }
