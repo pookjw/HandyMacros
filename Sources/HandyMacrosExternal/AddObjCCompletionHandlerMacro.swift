@@ -24,20 +24,15 @@ public struct AddObjCCompletionHandlerMacro: PeerMacro {
         let selectorName: String? = node.stringArgument(for: "selectorName")
         let doesThrow: Bool = funcDecl.signature.effectSpecifiers?.throwsSpecifier != nil
         let (unwrappedReturnType, optionalCount, isNumeric): (String, Int, Bool) = {
-            guard let returnTypeSyntax: TypeSyntax = funcDecl.signature.returnClause?.type else {
+            guard 
+                let returnTypeSyntax: TypeSyntax = funcDecl.signature.returnClause?.type
+            else {
                 return nil
             }
             
             let (typeSyntax, optionalCount): (TypeSyntax, Int) = returnTypeSyntax.wrappedValue
             
-            guard
-                let identifierSyntax: IdentifierTypeSyntax = typeSyntax.as(IdentifierTypeSyntax.self) else {
-                return nil
-            }
-            
-            let originalReturnType: String = identifierSyntax.name.text
-            
-            return (originalReturnType, optionalCount, typeSyntax.isNumeric)
+            return (typeSyntax.trimmedDescription, optionalCount, typeSyntax.isNumeric)
         }() ?? ("Void", .zero, false)
         let originalReturnType: String = {
             var result: String = unwrappedReturnType
